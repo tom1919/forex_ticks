@@ -1,0 +1,76 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan  5 09:58:58 2021
+
+Download tick level Forex quotes from FXCM
+
+@author: Tommy Lang
+"""
+
+#%% libs and cwd
+
+import os
+import time
+import requests
+import itertools
+import pandas as pd
+import dask.bag as db
+
+#%% config
+
+symbols = ['USDJPY', 'USDCAD']
+years = [2018, 2019]
+weeks = list(range(1,53))
+config = list(itertools.product(*[symbols, years, weeks]))
+
+#%% funcs
+
+def read_gz(url):
+    r = requests.get(url, stream=True)
+    filename = '_'.join(url.split('/')[3:6])
+    with open(filename , "wb") as f:
+        r = requests.get(url)
+        f.write(r.content)
+    df = pd.read_csv(filename , encoding='utf_16_le')
+    os.remove(filename)
+    return df
+
+def convert_dt(df):
+    # pad missing zeros in microsecond field and set index
+    df['DateTime'] = df.DateTime.str.pad(26, side='right', fillchar='0')
+    pd.to_datetime(df.DateTime,  format="%m/%d/%Y %H:%M:%S.%f")
+    
+    # sample start and end to determine date format
+    sample1 = df.DateTime[1]
+    sample2 = df.DateTime.iloc[-1]
+    
+    # determine datetime format and supply srftime directive
+    if sample1[2] == '/':
+        if sample1[0:2] == sample2[0:2]:
+            df.DateTime = pd.to_datetime(df.DateTime, format="%m/%d/%Y %H:%M:%S.%f")
+        elif sample1[3:5] == sample2[3:5]: # typo
+            df.DateTime = pd.to_datetime(df.DateTime, format="%d/%m/%Y %H:%M:%S.%f")
+    elif sample1[4] == '/':
+        if sample1[8:10] == sample2[8:10]:
+            df.DateTime = pd.to_datetime(df.DateTime, format="%Y/%d/%m %H:%M:%S.%f")
+        elif sample1[6:8] == sample2[6:8]:
+            df.DateTime = pd.to_datetime(df.DateTime, format="%Y/%m/%d %H:%M:%S.%f")
+
+def write_ftr(config_i):
+    symbol, year, week = config_i
+    url = f"https://tickdata.fxcorporate.com/{symbol}/{year}/{week}.csv.gz"
+    df = read_gz(url)
+    convert_dt(df)
+    df.reset_index(drop = True).to_feather(f'./data/{symbol}_{year}_{week}.ftr')
+    return None
+    
+#%% download csv.gz files and save as ftr files
+
+t = time.perf_counter() 
+
+b = db.from_sequence(config[0:60])
+b = b.map(write_ftr)
+_ = b.compute()
+
+print(round(time.perf_counter()  - t,4))
+
