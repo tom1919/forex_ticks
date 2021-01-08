@@ -36,25 +36,30 @@ def read_gz(url):
     return df
 
 def convert_dt(df):
-    # pad missing zeros in microsecond field and set index
+    # pad missing zeros in microsecond field 
     df['DateTime'] = df.DateTime.str.pad(26, side='right', fillchar='0')
-    pd.to_datetime(df.DateTime,  format="%m/%d/%Y %H:%M:%S.%f")
     
     # sample start and end to determine date format
     sample1 = df.DateTime[1]
     sample2 = df.DateTime.iloc[-1]
     
-    # determine datetime format and supply srftime directive
+    dts = pd.DataFrame({'sample_dts':[sample1, sample2]})
     if sample1[2] == '/':
-        if sample1[0:2] == sample2[0:2]:
-            df.DateTime = pd.to_datetime(df.DateTime, format="%m/%d/%Y %H:%M:%S.%f")
-        elif sample1[3:5] == sample2[3:5]: # typo
-            df.DateTime = pd.to_datetime(df.DateTime, format="%d/%m/%Y %H:%M:%S.%f")
+        dts['possible_month1'] = dts.sample_dts.str.slice(0,2)
+        dts['possible_month2'] = dts.sample_dts.str.slice(3,5)
     elif sample1[4] == '/':
-        if sample1[8:10] == sample2[8:10]:
-            df.DateTime = pd.to_datetime(df.DateTime, format="%Y/%d/%m %H:%M:%S.%f")
-        elif sample1[6:8] == sample2[6:8]:
-            df.DateTime = pd.to_datetime(df.DateTime, format="%Y/%m/%d %H:%M:%S.%f")
+        dts['possible_month1'] = dts.sample_dts.str.slice(6,8)
+        dts['possible_month2'] = dts.sample_dts.str.slice(8,10)
+    
+    # determine date format based on smallest distance between values
+    dts = dts.T.iloc[1:].astype(int)
+    dts.columns = ['beg', 'end']
+    dts['format'] = ['%m/%d/%Y %H:%M:%S.%f', '%d/%m/%Y %H:%M:%S.%f']
+    dts['delta'] = np.abs(dts.beg - dts.end)
+    dt_format = dts.sort_values('delta').iloc[0].format
+    
+    df['dt_tm'] = pd.to_datetime(df.DateTime, format = dt_format)
+    
     return df
 
 def write_ftr(config_i):
