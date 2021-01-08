@@ -55,12 +55,13 @@ def convert_dt(df):
             df.DateTime = pd.to_datetime(df.DateTime, format="%Y/%d/%m %H:%M:%S.%f")
         elif sample1[6:8] == sample2[6:8]:
             df.DateTime = pd.to_datetime(df.DateTime, format="%Y/%m/%d %H:%M:%S.%f")
+    return df
 
 def write_ftr(config_i):
     symbol, year, week = config_i
     url = f"https://tickdata.fxcorporate.com/{symbol}/{year}/{week}.csv.gz"
     df = read_gz(url)
-    convert_dt(df)
+    df = convert_dt(df)
     df.reset_index(drop = True).to_feather(f'./data/{symbol}_{year}_{week}.ftr')
     return None
     
